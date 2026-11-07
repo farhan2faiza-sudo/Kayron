@@ -1,0 +1,90 @@
+name: Build APK
+on: [workflow_dispatch, push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+      - name: Create Android project around MainActivity.kt
+        run: |
+          mkdir -p app/src/main/java/com/example/tvremote
+          cp MainActivity.kt app/src/main/java/com/example/tvremote/MainActivity.kt
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = "SmartRemote"
+          include(":app")
+          EOF
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false
+          }
+          EOF
+          printf 'android.useAndroidX=true\norg.gradle.jvmargs=-Xmx3g\n' > gradle.properties
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+              id("org.jetbrains.kotlin.plugin.compose")
+          }
+          android {
+              namespace = "com.example.tvremote"
+              compileSdk = 35
+              defaultConfig { applicationId = "com.example.tvremote"; minSdk = 24; targetSdk = 35; versionCode = 1; versionName = "1.0" }
+              buildFeatures { compose = true }
+          }
+          dependencies {
+              implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.activity:activity-compose:1.9.3")
+              implementation("com.squareup.okhttp3:okhttp:4.12.0")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+              implementation("androidx.camera:camera-core:1.3.4")
+              implementation("androidx.camera:camera-camera2:1.3.4")
+              implementation("androidx.camera:camera-lifecycle:1.3.4")
+              implementation("androidx.camera:camera-view:1.3.4")
+              implementation("com.google.mlkit:text-recognition:16.0.1")
+              implementation("com.google.mlkit:image-labeling:17.0.9")
+              implementation("com.google.mlkit:barcode-scanning:17.3.0")
+              implementation("com.google.mlkit:language-id:17.0.6")
+              implementation("com.google.mlkit:translate:17.0.3")
+          }
+          EOF
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.CAMERA"/>
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+              <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+              <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+              <uses-permission android:name="android.permission.TRANSMIT_IR"/>
+              <uses-feature android:name="android.hardware.consumerir" android:required="false"/>
+              <application android:label="Smart Remote" android:usesCleartextTraffic="true"
+                  android:theme="@android:style/Theme.Material.NoActionBar">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+      - name: Build
+        run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SmartRemote-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
